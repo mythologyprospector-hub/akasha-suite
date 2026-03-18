@@ -1,0 +1,22 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+
+echo "=================================="
+echo "           AKASHA LOG"
+echo "=================================="
+
+for d in ~/akasha-* ~/engine-* ~/node-herald; do
+  [ -d "$d" ] || continue
+
+  if [ -d "$d/build_outputs" ]; then
+    echo
+    echo "Repo: $(basename "$d")"
+    latest="$(ls -1t "$d"/build_outputs 2>/dev/null | head -n 5 || true)"
+    if [ -n "$latest" ]; then
+      echo "$latest" | sed 's/^/  /'
+    else
+      echo "  (no build outputs)"
+    fi
+  fi
+done
+echo

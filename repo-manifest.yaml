@@ -1,0 +1,16 @@
+repo: akasha-suite
+
+role: interface
+layer: operations
+
+description: >
+  Command-line control suite for operating, inspecting, syncing, and maintaining
+  the Akasha ecosystem from a human-in-the-loop command deck.
+
+interfaces:
+  - akasha-discovery
+  - akasha-forge
+  - akasha-world
+  - akasha-constellation
+
+status: active

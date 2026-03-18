@@ -1,0 +1,40 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+
+echo "=================================="
+echo "           AKASHA SYNC"
+echo "=================================="
+echo
+
+STAMP="$(date '+%Y-%m-%d %H:%M:%S')"
+
+for d in ~/akasha-* ~/engine-* ~/node-herald; do
+  [ -d "$d/.git" ] || continue
+  repo="$(basename "$d")"
+
+  echo "----------------------------------"
+  echo "Repo: $repo"
+
+  # Detect ANY change (including untracked files)
+  if [ -z "$(git -C "$d" status --porcelain)" ]; then
+    echo "No changes"
+    continue
+  fi
+
+  git -C "$d" add .
+
+  if git -C "$d" commit -m "akasha-sync: automated update $STAMP" >/dev/null 2>&1; then
+    echo "Commit created"
+  else
+    echo "Commit skipped or failed"
+  fi
+
+  if git -C "$d" push; then
+    echo "Push complete"
+  else
+    echo "Push failed"
+  fi
+done
+
+echo
+echo "AKASHA SYNC COMPLETE"

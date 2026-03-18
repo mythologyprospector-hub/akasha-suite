@@ -1,0 +1,29 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+
+echo "=================================="
+echo "         AKASHA CONSOLE"
+echo "=================================="
+echo
+
+echo "Repos:"
+found=0
+for d in ~/akasha-* ~/engine-* ~/node-herald; do
+  [ -d "$d/.git" ] || continue
+  found=1
+  printf "  - %s\n" "$(basename "$d")"
+done
+
+if [ "$found" -eq 0 ]; then
+  echo "  (no Akasha repos found in ~)"
+fi
+
+echo
+echo "Quick Commands:"
+echo "  akasha-doctor    # repo health"
+echo "  akasha-run       # run discovery"
+echo "  akasha-log       # latest outputs"
+echo "  akasha-clean     # clean generated outputs"
+echo "  akasha-sync      # add/commit/push all repos"
+echo "  akasha-remotes   # repair Akasha remote URLs"
+echo

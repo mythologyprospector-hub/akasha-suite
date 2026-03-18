@@ -1,0 +1,13 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+
+echo "=================================="
+echo "           AKASHA RUN"
+echo "=================================="
+
+cd ~/akasha-discovery || {
+  echo "Could not find ~/akasha-discovery"
+  exit 1
+}
+
+python run_discovery.py

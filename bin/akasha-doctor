@@ -1,0 +1,41 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+
+echo "=================================="
+echo "         AKASHA DOCTOR"
+echo "=================================="
+
+for d in ~/akasha-* ~/engine-* ~/node-herald; do
+  [ -d "$d/.git" ] || continue
+
+  echo
+  echo "Repo: $(basename "$d")"
+
+  remote="$(git -C "$d" remote get-url origin 2>/dev/null || true)"
+  branch="$(git -C "$d" branch --show-current 2>/dev/null || true)"
+  status="$(git -C "$d" status --short 2>/dev/null || true)"
+  email="$(git -C "$d" config user.email 2>/dev/null || true)"
+
+  echo "  Branch: ${branch:-unknown}"
+  echo "  Remote: ${remote:-missing}"
+  echo "  Email:  ${email:-unset}"
+
+  if [ -f "$d/repo-manifest.yaml" ]; then
+    echo "  Manifest: OK"
+  else
+    echo "  Manifest: MISSING"
+  fi
+
+  if [ -n "$status" ]; then
+    echo "  Working tree: DIRTY"
+  else
+    echo "  Working tree: clean"
+  fi
+
+  if [[ "$remote" == git@github-akasha:mythologyprospector-hub/* ]]; then
+    echo "  Akasha remote: OK"
+  else
+    echo "  Akasha remote: CHECK"
+  fi
+done
+echo
