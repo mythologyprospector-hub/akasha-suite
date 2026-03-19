@@ -25,3 +25,7 @@ source ~/.bashrc
 - Assumes repos are cloned directly into `~/`
 - Assumes `akasha-discovery/run_discovery.py` exists
 - Assumes Akasha SSH host alias is `github-akasha`
+
+---
+
+This repository participates in the Akasha ecosystem and is described by repo-manifest.yaml.

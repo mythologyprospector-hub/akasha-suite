@@ -5,18 +5,40 @@ echo "=================================="
 echo "           AKASHA LOG"
 echo "=================================="
 
-for d in ~/akasha-* ~/engine-* ~/node-herald; do
-  [ -d "$d" ] || continue
+DISCOVERY_DIR="$HOME/akasha-discovery/build_outputs"
 
-  if [ -d "$d/build_outputs" ]; then
-    echo
-    echo "Repo: $(basename "$d")"
-    latest="$(ls -1t "$d"/build_outputs 2>/dev/null | head -n 5 || true)"
-    if [ -n "$latest" ]; then
-      echo "$latest" | sed 's/^/  /'
-    else
-      echo "  (no build outputs)"
-    fi
-  fi
-done
+if [ ! -d "$DISCOVERY_DIR" ]; then
+  echo
+  echo "No build_outputs directory found."
+  exit 0
+fi
+
+mapfile -t FILES < <(ls -1t "$DISCOVERY_DIR"/*.json 2>/dev/null | head -n 5 || true)
+
+if [ "${#FILES[@]}" -eq 0 ]; then
+  echo
+  echo "No build artifacts found."
+  exit 0
+fi
+
 echo
+echo "Recent Discovery Trail:"
+for f in "${FILES[@]}"; do
+  python - <<PY
+import json
+from pathlib import Path
+from datetime import datetime
+
+p = Path(r"""$f""")
+data = json.loads(p.read_text())
+ts = datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+
+print(f"- {p.name}")
+print(f"  Time:   {ts}")
+print(f"  Target: {data.get('target', '-')}")
+print(f"  Gap:    {data.get('gap_type', '-')}")
+print(f"  Action: {data.get('action', '-')}")
+print(f"  Reason: {data.get('reason', '-')}")
+print()
+PY
+done
