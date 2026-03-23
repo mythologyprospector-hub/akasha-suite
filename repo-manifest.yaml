@@ -17,4 +17,7 @@ status:
 name: akasha-suite
 type: module
 domain: systems
-depends_on: []
+depends_on:
+- akasha-engine
+- akasha-discovery
+- akasha-constellation
