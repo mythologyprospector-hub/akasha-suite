@@ -5,9 +5,13 @@ echo "=================================="
 echo "           AKASHA RUN"
 echo "=================================="
 
-cd ~/akasha-discovery || {
-  echo "Could not find ~/akasha-discovery"
+if [ -d ~/akasha-discovery ]; then
+  cd ~/akasha-discovery
+elif [ -d "$(cd -- "$(dirname -- "$0")/../../akasha-discovery" && pwd 2>/dev/null)" ]; then
+  cd "$(cd -- "$(dirname -- "$0")/../../akasha-discovery" && pwd)"
+else
+  echo "Could not find akasha-discovery in ~/ or beside akasha-suite"
   exit 1
-}
+fi
 
-python run_discovery.py
+python run_discovery.py "$@"
