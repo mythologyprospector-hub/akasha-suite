@@ -21,3 +21,25 @@ depends_on:
 - akasha-engine
 - akasha-discovery
 - akasha-constellation
+
+engine:
+  family: meta
+  class: coordination_engine
+  role: unknown
+
+identity:
+  role: engine
+  layer: unknown
+  description: >
+    Canonical Akasha repo placeholder. Replace with repo-specific description.
+
+ownership:
+  steward: human
+  approval_required: true
+
+capabilities: []
+
+alignment:
+  axioms_required: true
+  canonical_structure: true
+  interpretation_free_core: true

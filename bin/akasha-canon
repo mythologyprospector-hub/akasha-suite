@@ -1,0 +1,578 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+MODE="${1:-check}"
+
+if [[ "$MODE" != "check" && "$MODE" != "fix" && "$MODE" != "patch" && "$MODE" != "write" && "$MODE" != "classify" && "$MODE" != "topology" ]]; then
+  echo "Usage: akasha-canon [check|fix|patch|write|classify|topology]"
+  exit 1
+fi
+
+echo "=================================="
+echo "         AKASHA CANON"
+echo "=================================="
+echo "Mode: $MODE"
+echo
+
+README_SECTIONS=(
+  "## Engine Role"
+  "## Why it exists"
+  "## Inputs"
+  "## Memory / Registry"
+  "## Relation Model"
+  "## Evaluator"
+  "## Outputs"
+  "## Position in Constellation"
+  "## Next Steps"
+)
+
+MANIFEST_KEYS=(
+  "repo:"
+  "engine:"
+  "identity:"
+  "ownership:"
+  "interfaces:"
+  "capabilities:"
+  "alignment:"
+  "depends_on:"
+)
+
+canon_readme() {
+  local repo="$1"
+  cat <<EOT
+# ${repo}
+
+## Engine Role
+
+Describe the primary role of this repo in the Akasha constellation.
+
+## Why it exists
+
+Explain the problem this repo solves and why it exists.
+
+## Inputs
+
+List the main inputs this engine consumes.
+
+## Memory / Registry
+
+Describe any ledgers, registries, bundles, or persistent stores maintained by this repo.
+
+## Relation Model
+
+Describe how this repo models structure, graphs, transitions, relationships, or constraints.
+
+## Evaluator
+
+Describe how this repo detects patterns, gaps, tensions, contradictions, bursts, or other meaningful structures.
+
+## Outputs
+
+Describe the artifacts this repo produces: directives, bundles, reports, ledgers, APIs, etc.
+
+## Position in Constellation
+
+Explain where this repo sits relative to the rest of the system.
+
+## Next Steps
+
+List immediate next development goals.
+EOT
+}
+
+canon_manifest() {
+  local repo="$1"
+  cat <<EOT
+repo:
+  name: ${repo}
+  ecosystem: akasha
+  version: 0.1.0
+  status: active
+
+engine:
+  family: unknown
+  class: unknown
+  role: unknown
+
+identity:
+  role: engine
+  layer: unknown
+  description: >
+    Canonical Akasha repo placeholder. Replace with repo-specific description.
+
+ownership:
+  steward: human
+  approval_required: true
+
+interfaces:
+  consumes: []
+  produces: []
+
+capabilities: []
+
+alignment:
+  axioms_required: true
+  canonical_structure: true
+  interpretation_free_core: true
+
+depends_on: []
+EOT
+}
+
+manifest_block_for_key() {
+  local key="$1"
+  local repo="$2"
+
+  case "$key" in
+    "repo:")
+      cat <<EOT
+repo:
+  name: ${repo}
+  ecosystem: akasha
+  version: 0.1.0
+  status: active
+EOT
+      ;;
+    "engine:")
+      cat <<'EOT'
+engine:
+  family: unknown
+  class: unknown
+  role: unknown
+EOT
+      ;;
+    "identity:")
+      cat <<'EOT'
+identity:
+  role: engine
+  layer: unknown
+  description: >
+    Canonical Akasha repo placeholder. Replace with repo-specific description.
+EOT
+      ;;
+    "ownership:")
+      cat <<'EOT'
+ownership:
+  steward: human
+  approval_required: true
+EOT
+      ;;
+    "interfaces:")
+      cat <<'EOT'
+interfaces:
+  consumes: []
+  produces: []
+EOT
+      ;;
+    "capabilities:")
+      cat <<'EOT'
+capabilities: []
+EOT
+      ;;
+    "alignment:")
+      cat <<'EOT'
+alignment:
+  axioms_required: true
+  canonical_structure: true
+  interpretation_free_core: true
+EOT
+      ;;
+    "depends_on:")
+      cat <<'EOT'
+depends_on: []
+EOT
+      ;;
+  esac
+}
+
+readme_missing_sections() {
+  local f="$1"
+  local missing=0
+
+  for section in "${README_SECTIONS[@]}"; do
+    if ! grep -Fq "$section" "$f"; then
+      echo "    Missing README section: $section"
+      missing=1
+    fi
+  done
+
+  return $missing
+}
+
+manifest_missing_keys() {
+  local f="$1"
+  local missing=0
+
+  for key in "${MANIFEST_KEYS[@]}"; do
+    if ! grep -Fq "$key" "$f"; then
+      echo "    Missing manifest key: $key"
+      missing=1
+    fi
+  done
+
+  return $missing
+}
+
+patch_readme() {
+  local f="$1"
+
+  for section in "${README_SECTIONS[@]}"; do
+    if ! grep -Fq "$section" "$f"; then
+      echo >> "$f"
+      echo "$section" >> "$f"
+      echo >> "$f"
+      echo "TODO: fill this section." >> "$f"
+      echo "  -> appended README section: $section"
+    fi
+  done
+}
+
+patch_manifest() {
+  local f="$1"
+  local repo="$2"
+
+  for key in "${MANIFEST_KEYS[@]}"; do
+    if ! grep -Fq "$key" "$f"; then
+      echo >> "$f"
+      manifest_block_for_key "$key" "$repo" >> "$f"
+      echo "  -> appended manifest block: $key"
+    fi
+  done
+}
+
+classify_repo() {
+  local repo="$1"
+
+  ENGINE_FAMILY="unknown"
+  ENGINE_CLASS="unknown"
+  ENGINE_ROLE="unknown"
+  IDENTITY_LAYER="unknown"
+
+  case "$repo" in
+    akasha-events)
+      ENGINE_FAMILY="observation"
+      ENGINE_CLASS="ledger_engine"
+      ENGINE_ROLE="canonical_event_store"
+      IDENTITY_LAYER="memory"
+      ;;
+    akasha-anomaly|akasha-observer|akasha-collect|akasha-harvest)
+      ENGINE_FAMILY="observation"
+      ENGINE_CLASS="intake_engine"
+      ENGINE_ROLE="observation_capture"
+      IDENTITY_LAYER="intake"
+      ;;
+    akasha-time-nexus)
+      ENGINE_FAMILY="observation"
+      ENGINE_CLASS="context_engine"
+      ENGINE_ROLE="world_state_enrichment"
+      IDENTITY_LAYER="enrichment"
+      ;;
+    akasha-attractor|akasha-gap|akasha-instability)
+      ENGINE_FAMILY="pattern"
+      ENGINE_CLASS="evaluation_engine"
+      ENGINE_ROLE="structure_detection"
+      IDENTITY_LAYER="evaluation"
+      ;;
+    akasha-prospector|akasha-suggest)
+      ENGINE_FAMILY="directive"
+      ENGINE_CLASS="directive_engine"
+      ENGINE_ROLE="next_step_generation"
+      IDENTITY_LAYER="direction"
+      ;;
+    akasha-grand-atlas|akasha-apis|akasha-bridge)
+      ENGINE_FAMILY="source"
+      ENGINE_CLASS="source_engine"
+      ENGINE_ROLE="external_resource_mapping"
+      IDENTITY_LAYER="integration"
+      ;;
+    akasha-ontology|akasha-theory|akasha-theorize|akasha-lens|akasha-axioms)
+      ENGINE_FAMILY="ontology"
+      ENGINE_CLASS="concept_engine"
+      ENGINE_ROLE="conceptual_structure_modeling"
+      IDENTITY_LAYER="theory"
+      ;;
+    akasha-graph-phases|akasha-causality)
+      ENGINE_FAMILY="relationship"
+      ENGINE_CLASS="graph_engine"
+      ENGINE_ROLE="relation_modeling"
+      IDENTITY_LAYER="structure"
+      ;;
+    akasha-validation|akasha-guardian)
+      ENGINE_FAMILY="truth"
+      ENGINE_CLASS="validation_engine"
+      ENGINE_ROLE="constraint_and_integrity_checking"
+      IDENTITY_LAYER="governance"
+      ;;
+    akasha-world|akasha-simulation|akasha-evolve|akasha-experiments)
+      ENGINE_FAMILY="simulation"
+      ENGINE_CLASS="simulation_engine"
+      ENGINE_ROLE="scenario_and_world_modeling"
+      IDENTITY_LAYER="simulation"
+      ;;
+    akasha-forge|akasha-engine|akasha-discovery|akasha-discovery-core)
+      ENGINE_FAMILY="discovery"
+      ENGINE_CLASS="discovery_engine"
+      ENGINE_ROLE="candidate_structure_generation"
+      IDENTITY_LAYER="discovery"
+      ;;
+    akasha-constellation|akasha-suite)
+      ENGINE_FAMILY="meta"
+      ENGINE_CLASS="coordination_engine"
+      ENGINE_ROLE="constellation_governance"
+      IDENTITY_LAYER="coordination"
+      ;;
+    akasha-domain-*)
+      ENGINE_FAMILY="domain"
+      ENGINE_CLASS="domain_sidecar"
+      ENGINE_ROLE="domain_specific_knowledge"
+      IDENTITY_LAYER="domain"
+      ;;
+    akasha-visualize)
+      ENGINE_FAMILY="presentation"
+      ENGINE_CLASS="visualization_engine"
+      ENGINE_ROLE="structure_and_output_rendering"
+      IDENTITY_LAYER="presentation"
+      ;;
+    mythology-*)
+      ENGINE_FAMILY="narrative"
+      ENGINE_CLASS="narrative_engine"
+      ENGINE_ROLE="story_and_media_pipeline"
+      IDENTITY_LAYER="narrative"
+      ;;
+    engine-*)
+      ENGINE_FAMILY="discovery"
+      ENGINE_CLASS="specialized_engine"
+      ENGINE_ROLE="engine_subsystem"
+      IDENTITY_LAYER="discovery"
+      ;;
+    node-*)
+      ENGINE_FAMILY="node"
+      ENGINE_CLASS="node_engine"
+      ENGINE_ROLE="field_or_execution_node"
+      IDENTITY_LAYER="node"
+      ;;
+  esac
+}
+
+infer_dependencies() {
+  local repo="$1"
+  DEPENDS_ON=()
+
+  case "$repo" in
+    akasha-anomaly|akasha-observer|akasha-collect|akasha-harvest)
+      DEPENDS_ON=("akasha-events" "akasha-time-nexus")
+      ;;
+    akasha-time-nexus)
+      DEPENDS_ON=("akasha-apis")
+      ;;
+    akasha-events)
+      DEPENDS_ON=("akasha-time-nexus")
+      ;;
+    akasha-attractor|akasha-gap|akasha-instability)
+      DEPENDS_ON=("akasha-events")
+      ;;
+    akasha-prospector|akasha-suggest)
+      DEPENDS_ON=("akasha-attractor")
+      ;;
+    akasha-grand-atlas)
+      DEPENDS_ON=()
+      ;;
+    akasha-apis|akasha-bridge)
+      DEPENDS_ON=("akasha-grand-atlas")
+      ;;
+    akasha-ontology|akasha-theory|akasha-theorize|akasha-lens|akasha-axioms)
+      DEPENDS_ON=()
+      ;;
+    akasha-graph-phases|akasha-causality)
+      DEPENDS_ON=("akasha-ontology")
+      ;;
+    akasha-validation|akasha-guardian)
+      DEPENDS_ON=("akasha-events" "akasha-attractor")
+      ;;
+    akasha-world|akasha-simulation|akasha-evolve|akasha-experiments)
+      DEPENDS_ON=("akasha-ontology")
+      ;;
+    akasha-forge|akasha-engine|akasha-discovery|akasha-discovery-core)
+      DEPENDS_ON=("akasha-ontology" "akasha-graph-phases")
+      ;;
+    akasha-constellation|akasha-suite)
+      DEPENDS_ON=("akasha-grand-atlas" "akasha-events" "akasha-attractor" "akasha-prospector")
+      ;;
+    akasha-domain-*)
+      DEPENDS_ON=("akasha-ontology")
+      ;;
+    akasha-visualize)
+      DEPENDS_ON=("akasha-events" "akasha-attractor" "akasha-prospector")
+      ;;
+    mythology-*)
+      DEPENDS_ON=()
+      ;;
+    engine-*)
+      DEPENDS_ON=()
+      ;;
+    node-*)
+      DEPENDS_ON=("akasha-suite")
+      ;;
+  esac
+}
+
+set_yaml_scalar_if_unknown() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+
+  python3 - "$file" "$key" "$value" <<'PY'
+import sys
+from pathlib import Path
+
+file_path = Path(sys.argv[1])
+key = sys.argv[2]
+value = sys.argv[3]
+
+text = file_path.read_text(encoding="utf-8")
+lines = text.splitlines()
+
+changed = False
+for i, line in enumerate(lines):
+    stripped = line.strip()
+    if stripped.startswith(f"{key}:"):
+        current = stripped.split(":", 1)[1].strip()
+        if current in {"unknown", "[]", '""', "''"}:
+            indent = line[:len(line) - len(line.lstrip())]
+            lines[i] = f"{indent}{key}: {value}"
+            changed = True
+        break
+
+if changed:
+    file_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"  -> classified {key}: {value}")
+PY
+}
+
+set_depends_if_empty() {
+  local file="$1"
+  shift
+  local deps=("$@")
+
+  python3 - "$file" "${deps[@]}" <<'PY'
+import sys
+from pathlib import Path
+
+file_path = Path(sys.argv[1])
+deps = list(sys.argv[2:])
+
+text = file_path.read_text(encoding="utf-8")
+lines = text.splitlines()
+
+for i, line in enumerate(lines):
+    stripped = line.strip()
+    if stripped.startswith("depends_on:"):
+        current = stripped.split(":", 1)[1].strip()
+        if current == "[]":
+            indent = line[:len(line) - len(line.lstrip())]
+            block = [f"{indent}depends_on:"]
+            for dep in deps:
+                block.append(f"{indent}  - {dep}")
+            if not deps:
+                block = [f"{indent}depends_on: []"]
+            lines[i:i+1] = block
+            file_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            if deps:
+                print("  -> inferred depends_on: " + ", ".join(deps))
+            else:
+                print("  -> inferred depends_on: []")
+        break
+PY
+}
+
+for d in ~/akasha-* ~/engine-* ~/mythology-* ~/node-*; do
+  [ -d "$d/.git" ] || continue
+
+  repo="$(basename "$d")"
+  readme="$d/README.md"
+  manifest="$d/repo-manifest.yaml"
+
+  echo "Repo: $repo"
+
+  readme_ok=1
+  manifest_ok=1
+
+  if [ ! -f "$readme" ]; then
+    echo "  README.md: MISSING"
+    readme_ok=0
+  else
+    echo "  README.md: present"
+    if ! readme_missing_sections "$readme"; then
+      readme_ok=0
+    fi
+  fi
+
+  if [ ! -f "$manifest" ]; then
+    echo "  repo-manifest.yaml: MISSING"
+    manifest_ok=0
+  else
+    echo "  repo-manifest.yaml: present"
+    if ! manifest_missing_keys "$manifest"; then
+      manifest_ok=0
+    fi
+  fi
+
+  if [[ "$MODE" == "fix" ]]; then
+    if [ ! -f "$readme" ]; then
+      canon_readme "$repo" > "$readme"
+      echo "  -> created README.md"
+    fi
+    if [ ! -f "$manifest" ]; then
+      canon_manifest "$repo" > "$manifest"
+      echo "  -> created repo-manifest.yaml"
+    fi
+  fi
+
+  if [[ "$MODE" == "patch" ]]; then
+    if [ ! -f "$readme" ]; then
+      canon_readme "$repo" > "$readme"
+      echo "  -> created README.md"
+    else
+      patch_readme "$readme"
+    fi
+
+    if [ ! -f "$manifest" ]; then
+      canon_manifest "$repo" > "$manifest"
+      echo "  -> created repo-manifest.yaml"
+    else
+      patch_manifest "$manifest" "$repo"
+    fi
+  fi
+
+  if [[ "$MODE" == "write" ]]; then
+    canon_readme "$repo" > "$readme"
+    canon_manifest "$repo" > "$manifest"
+    echo "  -> rewrote README.md"
+    echo "  -> rewrote repo-manifest.yaml"
+  fi
+
+  if [[ "$MODE" == "classify" ]]; then
+    if [ -f "$manifest" ]; then
+      classify_repo "$repo"
+      set_yaml_scalar_if_unknown "$manifest" "family" "$ENGINE_FAMILY"
+      set_yaml_scalar_if_unknown "$manifest" "class" "$ENGINE_CLASS"
+      set_yaml_scalar_if_unknown "$manifest" "role" "$ENGINE_ROLE"
+      set_yaml_scalar_if_unknown "$manifest" "layer" "$IDENTITY_LAYER"
+    fi
+  fi
+
+  if [[ "$MODE" == "topology" ]]; then
+    if [ -f "$manifest" ]; then
+      infer_dependencies "$repo"
+      set_depends_if_empty "$manifest" "${DEPENDS_ON[@]}"
+    fi
+  fi
+
+  if [[ $readme_ok -eq 1 && $manifest_ok -eq 1 ]]; then
+    echo "  Canon: OK"
+  else
+    echo "  Canon: CHECK"
+  fi
+
+  echo
+done
