@@ -3,8 +3,29 @@ set -euo pipefail
 
 MODE="${1:-check}"
 
-if [[ "$MODE" != "check" && "$MODE" != "fix" && "$MODE" != "patch" && "$MODE" != "write" && "$MODE" != "classify" && "$MODE" != "topology" && "$MODE" != "doctor" ]]; then
-  echo "Usage: akasha-canon [check|fix|patch|write|classify|topology|doctor]"
+VALID_MODES=(
+  "check"
+  "fix"
+  "patch"
+  "write"
+  "classify"
+  "topology"
+  "doctor"
+  "enforce"
+  "enforce-manifest"
+  "enforce-readme"
+)
+
+is_valid_mode=0
+for m in "${VALID_MODES[@]}"; do
+  if [[ "$MODE" == "$m" ]]; then
+    is_valid_mode=1
+    break
+  fi
+done
+
+if [[ "$is_valid_mode" -ne 1 ]]; then
+  echo "Usage: akasha-canon [check|fix|patch|write|classify|topology|doctor|enforce|enforce-manifest|enforce-readme]"
   exit 1
 fi
 
@@ -44,86 +65,115 @@ LEGACY_TOP_KEYS=(
   "domain:"
 )
 
-canon_readme() {
-  local repo="$1"
-  cat <<EOT
-# ${repo}
+ENGINE_FAMILY="unknown"
+ENGINE_CLASS="unknown"
+ENGINE_ROLE="unknown"
+IDENTITY_LAYER="unknown"
+DESCRIPTION_TEXT=""
+DEPENDS_ON=()
+CONSUMES=()
+PRODUCES=()
+CAPABILITIES=()
 
-## Engine Role
+readme_missing_sections() {
+  local f="$1"
+  local missing=0
 
-Describe the primary role of this repo in the Akasha constellation.
+  for section in "${README_SECTIONS[@]}"; do
+    if ! grep -Fq "$section" "$f"; then
+      echo "    Missing README section: $section"
+      missing=1
+    fi
+  done
 
-## Why it exists
-
-Explain the problem this repo solves and why it exists.
-
-## Inputs
-
-List the main inputs this engine consumes.
-
-## Memory / Registry
-
-Describe any ledgers, registries, bundles, or persistent stores maintained by this repo.
-
-## Relation Model
-
-Describe how this repo models structure, graphs, transitions, relationships, or constraints.
-
-## Evaluator
-
-Describe how this repo detects patterns, gaps, tensions, contradictions, bursts, or other meaningful structures.
-
-## Outputs
-
-Describe the artifacts this repo produces: directives, bundles, reports, ledgers, APIs, etc.
-
-## Position in Constellation
-
-Explain where this repo sits relative to the rest of the system.
-
-## Next Steps
-
-List immediate next development goals.
-EOT
+  return $missing
 }
 
-canon_manifest() {
+manifest_missing_keys() {
+  local f="$1"
+  local missing=0
+
+  for key in "${MANIFEST_KEYS[@]}"; do
+    if ! grep -Fq "$key" "$f"; then
+      echo "    Missing manifest key: $key"
+      missing=1
+    fi
+  done
+
+  return $missing
+}
+
+doctor_manifest() {
   local repo="$1"
-  cat <<EOT
-repo:
-  name: ${repo}
-  ecosystem: akasha
-  version: 0.1.0
-  status: active
+  local file="$2"
+  local issues=0
 
-engine:
-  family: unknown
-  class: unknown
-  role: unknown
+  for legacy in "${LEGACY_TOP_KEYS[@]}"; do
+    if grep -Eq "^${legacy}" "$file"; then
+      echo "    Legacy top-level key present: ${legacy}"
+      issues=1
+    fi
+  done
 
-identity:
-  role: engine
-  layer: unknown
-  description: >
-    Canonical Akasha repo placeholder. Replace with repo-specific description.
+  if grep -Eq '^[[:space:]]*family:[[:space:]]*unknown[[:space:]]*$' "$file"; then
+    echo "    Unknown engine family"
+    issues=1
+  fi
 
-ownership:
-  steward: human
-  approval_required: true
+  if grep -Eq '^[[:space:]]*class:[[:space:]]*unknown[[:space:]]*$' "$file"; then
+    echo "    Unknown engine class"
+    issues=1
+  fi
 
-interfaces:
-  consumes: []
-  produces: []
+  if grep -Eq '^[[:space:]]*role:[[:space:]]*unknown[[:space:]]*$' "$file"; then
+    echo "    Unknown engine role"
+    issues=1
+  fi
 
-capabilities: []
+  if grep -Eq '^[[:space:]]*layer:[[:space:]]*unknown[[:space:]]*$' "$file"; then
+    echo "    Unknown identity layer"
+    issues=1
+  fi
 
-alignment:
-  axioms_required: true
-  canonical_structure: true
-  interpretation_free_core: true
+  if grep -Fq "Canonical Akasha repo placeholder. Replace with repo-specific description." "$file"; then
+    echo "    Placeholder description present"
+    issues=1
+  fi
 
-depends_on: []
-EOT
+  local dep_block
+  dep_block="$(awk '
+    /^depends_on:/ {flag=1; next}
+    flag && /^[^[:space:]-]/ {flag=0}
+    flag {print}
+  ' "$file" || true)"
+
+  if echo "$dep_block" | grep -Fq "$repo"; then
+    echo "    Self dependency detected"
+    issues=1
+  fi
+
+  if [[ "$repo" == "akasha-time-nexus" ]]; then
+    if echo "$dep_block" | grep -Fq "akasha-events"; then
+      echo "    Suspicious dependency: akasha-time-nexus should not depend on akasha-events"
+      issues=1
+    fi
+  fi
+
+  return $issues
+}
+
+patch_readme() {
+  local f="$1"
+
+  for section in "${README_SECTIONS[@]}"; do
+    if ! grep -Fq "$section" "$f"; then
+      echo >> "$f"
+      echo "$section" >> "$f"
+      echo >> "$f"
+      echo "TODO: fill this section." >> "$f"
+      echo "  -> appended README section: $section"
+    fi
+  done
 }
 
 manifest_block_for_key() {
@@ -192,48 +242,6 @@ EOT
   esac
 }
 
-readme_missing_sections() {
-  local f="$1"
-  local missing=0
-
-  for section in "${README_SECTIONS[@]}"; do
-    if ! grep -Fq "$section" "$f"; then
-      echo "    Missing README section: $section"
-      missing=1
-    fi
-  done
-
-  return $missing
-}
-
-manifest_missing_keys() {
-  local f="$1"
-  local missing=0
-
-  for key in "${MANIFEST_KEYS[@]}"; do
-    if ! grep -Fq "$key" "$f"; then
-      echo "    Missing manifest key: $key"
-      missing=1
-    fi
-  done
-
-  return $missing
-}
-
-patch_readme() {
-  local f="$1"
-
-  for section in "${README_SECTIONS[@]}"; do
-    if ! grep -Fq "$section" "$f"; then
-      echo >> "$f"
-      echo "$section" >> "$f"
-      echo >> "$f"
-      echo "TODO: fill this section." >> "$f"
-      echo "  -> appended README section: $section"
-    fi
-  done
-}
-
 patch_manifest() {
   local f="$1"
   local repo="$2"
@@ -254,173 +262,548 @@ classify_repo() {
   ENGINE_CLASS="unknown"
   ENGINE_ROLE="unknown"
   IDENTITY_LAYER="unknown"
+  DESCRIPTION_TEXT="Canonical Akasha repo placeholder. Replace with repo-specific description."
+  DEPENDS_ON=()
+  CONSUMES=()
+  PRODUCES=()
+  CAPABILITIES=()
 
   case "$repo" in
     akasha-events)
       ENGINE_FAMILY="observation"
       ENGINE_CLASS="ledger_engine"
       ENGINE_ROLE="canonical_event_store"
-      IDENTITY_LAYER="memory"
+      IDENTITY_LAYER="ledger"
+      DESCRIPTION_TEXT="Canonical event schema and persistent storage layer for the Akasha ecosystem."
+      DEPENDS_ON=("akasha-time-nexus")
+      CONSUMES=("akasha_event_payloads")
+      PRODUCES=("persistent_event_records" "event_queries" "event_exports")
+      CAPABILITIES=("canonical_event_schema" "sqlite_event_storage" "event_ingestion" "event_query_support")
       ;;
-    akasha-anomaly|akasha-observer|akasha-collect|akasha-harvest)
+    akasha-anomaly)
+      ENGINE_FAMILY="observation"
+      ENGINE_CLASS="intake_engine"
+      ENGINE_ROLE="anomaly_capture"
+      IDENTITY_LAYER="intake"
+      DESCRIPTION_TEXT="Anomaly intake engine for the Akasha constellation. Responsible for recording irregular or exceptional observations that may deserve special attention."
+      DEPENDS_ON=("akasha-events" "akasha-time-nexus")
+      CONSUMES=("anomaly_reports" "observation_inputs" "contextual_time")
+      PRODUCES=("anomaly_records" "flagged_observations" "escalated_inputs")
+      CAPABILITIES=("anomaly_capture" "irregularity_flagging" "exceptional_event_recording" "escalated_observation_intake")
+      ;;
+    akasha-collect)
+      ENGINE_FAMILY="observation"
+      ENGINE_CLASS="intake_engine"
+      ENGINE_ROLE="structured_observation_collection"
+      IDENTITY_LAYER="intake"
+      DESCRIPTION_TEXT="Observation collection engine for the Akasha constellation. Responsible for gathering structured inputs and source material for downstream normalization."
+      DEPENDS_ON=("akasha-events" "akasha-time-nexus")
+      CONSUMES=("source_inputs" "raw_notes" "collected_signals")
+      PRODUCES=("structured_observations" "normalized_inputs" "intake_ready_records")
+      CAPABILITIES=("observation_collection" "signal_gathering" "structured_input_capture" "intake_normalization")
+      ;;
+    akasha-observer)
       ENGINE_FAMILY="observation"
       ENGINE_CLASS="intake_engine"
       ENGINE_ROLE="observation_capture"
       IDENTITY_LAYER="intake"
+      DESCRIPTION_TEXT="Observation capture engine for the Akasha constellation. Responsible for receiving direct observations and preparing them for event storage."
+      DEPENDS_ON=("akasha-events" "akasha-time-nexus")
+      CONSUMES=("direct_observations" "contextual_inputs" "source_signals")
+      PRODUCES=("captured_observations" "event_ready_records" "observation_logs")
+      CAPABILITIES=("observation_capture" "direct_signal_recording" "intake_logging" "event_preparation")
+      ;;
+    akasha-harvest)
+      ENGINE_FAMILY="observation"
+      ENGINE_CLASS="intake_engine"
+      ENGINE_ROLE="observation_harvesting"
+      IDENTITY_LAYER="intake"
+      DESCRIPTION_TEXT="Harvest engine for the Akasha constellation. Responsible for gathering observations and useful source material from outside inputs."
+      DEPENDS_ON=("akasha-events" "akasha-time-nexus")
+      CONSUMES=("source_material" "external_signals" "raw_observations")
+      PRODUCES=("harvested_observations" "routed_event_inputs" "intake_bundles")
+      CAPABILITIES=("source_harvesting" "observation_gathering" "intake_routing" "event_feed_preparation")
       ;;
     akasha-time-nexus)
       ENGINE_FAMILY="observation"
       ENGINE_CLASS="context_engine"
       ENGINE_ROLE="world_state_enrichment"
-      IDENTITY_LAYER="enrichment"
+      IDENTITY_LAYER="temporal"
+      DESCRIPTION_TEXT="Akasha-native context engine that transforms plain timestamp and location data into multi-axis world-state records."
+      DEPENDS_ON=("akasha-apis")
+      CONSUMES=("utc_timestamp" "latitude" "longitude" "optional_event_metadata" "akasha_apis_adapters")
+      PRODUCES=("enriched_event_records" "normalized_context_bundles" "akasha_event_payloads" "sqlite_event_storage")
+      CAPABILITIES=("event_stamping" "world_state_enrichment" "temporal_normalization" "contextual_query_support" "correlation_ready_records")
       ;;
-    akasha-attractor|akasha-gap|akasha-instability)
+    akasha-attractor)
       ENGINE_FAMILY="pattern"
       ENGINE_CLASS="evaluation_engine"
       ENGINE_ROLE="structure_detection"
-      IDENTITY_LAYER="evaluation"
+      IDENTITY_LAYER="analysis"
+      DESCRIPTION_TEXT="First-order pattern and clustering engine for the Akasha ecosystem. Reads the event ledger and surfaces grouped counts, bursts, and simple structure."
+      DEPENDS_ON=("akasha-events")
+      CONSUMES=("akasha_event_ledger")
+      PRODUCES=("event_summaries" "burst_reports" "grouped_counts")
+      CAPABILITIES=("event_grouping" "burst_detection" "pattern_surfacing" "summary_reports")
       ;;
-    akasha-prospector|akasha-suggest)
+    akasha-gap)
+      ENGINE_FAMILY="pattern"
+      ENGINE_CLASS="evaluation_engine"
+      ENGINE_ROLE="gap_detection"
+      IDENTITY_LAYER="evaluation"
+      DESCRIPTION_TEXT="Gap detection engine for the Akasha constellation. Responsible for identifying missing structures, sparse regions, and incomplete formations."
+      DEPENDS_ON=("akasha-events" "akasha-attractor" "akasha-ontology")
+      CONSUMES=("event_records" "graph_structures" "ontology_models" "pattern_outputs")
+      PRODUCES=("gap_reports" "sparse_region_signals" "missing_link_candidates")
+      CAPABILITIES=("structural_gap_detection" "sparse_region_identification" "missing_link_surfacing" "incompleteness_reporting")
+      ;;
+    akasha-instability)
+      ENGINE_FAMILY="pattern"
+      ENGINE_CLASS="evaluation_engine"
+      ENGINE_ROLE="instability_detection"
+      IDENTITY_LAYER="evaluation"
+      DESCRIPTION_TEXT="Instability detection engine for the Akasha constellation. Responsible for identifying volatile structures and fragile states."
+      DEPENDS_ON=("akasha-events" "akasha-attractor" "akasha-simulation")
+      CONSUMES=("event_records" "graph_structures" "simulation_outputs" "pattern_outputs")
+      PRODUCES=("instability_reports" "volatility_signals" "fragile_state_alerts")
+      CAPABILITIES=("instability_detection" "volatility_analysis" "fragile_state_surfacing" "oscillation_reporting")
+      ;;
+    akasha-prospector)
       ENGINE_FAMILY="directive"
       ENGINE_CLASS="directive_engine"
       ENGINE_ROLE="next_step_generation"
       IDENTITY_LAYER="direction"
+      DESCRIPTION_TEXT="Akasha directive and hypothesis engine. Reads surfaced patterns and sparse signals, then proposes disciplined next-step directions."
+      DEPENDS_ON=("akasha-attractor")
+      CONSUMES=("event_summaries" "burst_reports" "pattern_outputs")
+      PRODUCES=("directives" "hypotheses" "suggested_next_steps")
+      CAPABILITIES=("directive_generation" "hypothesis_surfacing" "observation_gap_detection" "next_step_planning")
       ;;
-    akasha-grand-atlas|akasha-apis|akasha-bridge)
+    akasha-suggest)
+      ENGINE_FAMILY="directive"
+      ENGINE_CLASS="directive_engine"
+      ENGINE_ROLE="suggestion_generation"
+      IDENTITY_LAYER="direction"
+      DESCRIPTION_TEXT="Suggestion engine for the Akasha constellation. Responsible for producing lightweight next-step suggestions and candidate actions."
+      DEPENDS_ON=("akasha-attractor" "akasha-gap")
+      CONSUMES=("pattern_outputs" "gap_reports" "discovery_candidates")
+      PRODUCES=("suggestions" "candidate_actions" "lightweight_directives")
+      CAPABILITIES=("suggestion_generation" "next_step_hinting" "candidate_action_proposal" "lightweight_direction_support")
+      ;;
+    akasha-apis)
       ENGINE_FAMILY="source"
       ENGINE_CLASS="source_engine"
       ENGINE_ROLE="external_resource_mapping"
       IDENTITY_LAYER="integration"
+      DESCRIPTION_TEXT="Adapter and normalization layer for external APIs used by the Akasha constellation."
+      DEPENDS_ON=("akasha-grand-atlas")
+      CONSUMES=("external_api_endpoints" "provider_credentials" "source_queries")
+      PRODUCES=("normalized_source_payloads" "provider_responses" "adapter_outputs")
+      CAPABILITIES=("api_adapter_management" "source_normalization" "provider_query_execution" "response_translation")
       ;;
-    akasha-ontology|akasha-theory|akasha-theorize|akasha-lens|akasha-axioms)
+    akasha-grand-atlas)
+      ENGINE_FAMILY="source"
+      ENGINE_CLASS="source_engine"
+      ENGINE_ROLE="external_resource_mapping"
+      IDENTITY_LAYER="integration"
+      DESCRIPTION_TEXT="Source mapping engine for the Akasha constellation. Responsible for identifying and organizing outside information sources and provider domains."
+      DEPENDS_ON=()
+      CONSUMES=("source_lists" "provider_metadata" "external_reference_maps")
+      PRODUCES=("source_catalogs" "provider_maps" "external_resource_indexes")
+      CAPABILITIES=("source_cataloging" "provider_mapping" "external_resource_indexing" "reference_structure_generation")
+      ;;
+    akasha-bridge)
+      ENGINE_FAMILY="source"
+      ENGINE_CLASS="source_engine"
+      ENGINE_ROLE="system_interconnection"
+      IDENTITY_LAYER="integration"
+      DESCRIPTION_TEXT="Bridge layer for the Akasha constellation. Responsible for connecting disparate systems and repackaging outputs into usable inputs elsewhere."
+      DEPENDS_ON=("akasha-grand-atlas" "akasha-apis")
+      CONSUMES=("external_payloads" "internal_engine_outputs" "conversion_rules")
+      PRODUCES=("bridged_payloads" "translated_inputs" "interoperable_outputs")
+      CAPABILITIES=("format_translation" "system_interconnection" "payload_repackaging" "cross_engine_bridging")
+      ;;
+    akasha-axioms)
+      ENGINE_FAMILY="ontology"
+      ENGINE_CLASS="concept_engine"
+      ENGINE_ROLE="foundational_principle_definition"
+      IDENTITY_LAYER="theory"
+      DESCRIPTION_TEXT="Foundational axiom engine for the Akasha constellation. Responsible for defining base principles and invariant commitments."
+      DEPENDS_ON=()
+      CONSUMES=("principle_inputs" "invariant_definitions" "conceptual_constraints")
+      PRODUCES=("axiom_sets" "foundational_principles" "system_constraints")
+      CAPABILITIES=("axiom_definition" "invariant_declaration" "foundational_constraint_modeling" "principle_structuring")
+      ;;
+    akasha-lens)
+      ENGINE_FAMILY="ontology"
+      ENGINE_CLASS="concept_engine"
+      ENGINE_ROLE="interpretive_view_modeling"
+      IDENTITY_LAYER="theory"
+      DESCRIPTION_TEXT="Lens engine for the Akasha constellation. Responsible for defining interpretive viewpoints and structured ways of examining the same data from multiple angles."
+      DEPENDS_ON=("akasha-ontology" "akasha-axioms")
+      CONSUMES=("ontology_models" "event_records" "graph_structures" "conceptual_views")
+      PRODUCES=("lens_definitions" "perspective_models" "framed_interpretations")
+      CAPABILITIES=("viewpoint_modeling" "perspective_structuring" "interpretive_frame_definition" "multi_angle_analysis_support")
+      ;;
+    akasha-ontology)
       ENGINE_FAMILY="ontology"
       ENGINE_CLASS="concept_engine"
       ENGINE_ROLE="conceptual_structure_modeling"
       IDENTITY_LAYER="theory"
+      DESCRIPTION_TEXT="Ontology engine for the Akasha constellation. Responsible for defining entities, categories, relationships, and conceptual structures."
+      DEPENDS_ON=("akasha-axioms")
+      CONSUMES=("concept_inputs" "relation_candidates" "category_definitions")
+      PRODUCES=("ontology_models" "entity_definitions" "category_maps" "semantic_structures")
+      CAPABILITIES=("ontology_modeling" "category_definition" "entity_structuring" "semantic_relation_mapping")
       ;;
-    akasha-graph-phases|akasha-causality)
+    akasha-theory)
+      ENGINE_FAMILY="ontology"
+      ENGINE_CLASS="concept_engine"
+      ENGINE_ROLE="formal_theory_structuring"
+      IDENTITY_LAYER="theory"
+      DESCRIPTION_TEXT="Theory structuring engine for the Akasha constellation. Responsible for organizing higher-order explanatory models and formal structures."
+      DEPENDS_ON=("akasha-axioms" "akasha-ontology")
+      CONSUMES=("ontology_models" "axiom_sets" "relation_structures" "conceptual_frameworks")
+      PRODUCES=("theory_models" "explanatory_structures" "formal_frameworks")
+      CAPABILITIES=("formal_theory_modeling" "conceptual_framework_structuring" "explanatory_unification" "higher_order_model_generation")
+      ;;
+    akasha-theorize)
+      ENGINE_FAMILY="ontology"
+      ENGINE_CLASS="concept_engine"
+      ENGINE_ROLE="theory_generation"
+      IDENTITY_LAYER="theory"
+      DESCRIPTION_TEXT="Theory generation engine for the Akasha constellation. Responsible for proposing candidate theories and explanatory possibilities."
+      DEPENDS_ON=("akasha-axioms" "akasha-ontology" "akasha-theory")
+      CONSUMES=("ontology_models" "axiom_sets" "event_patterns" "relation_structures")
+      PRODUCES=("candidate_theories" "conceptual_syntheses" "explanatory_hypotheses")
+      CAPABILITIES=("theory_generation" "conceptual_synthesis" "explanatory_hypothesis_creation" "candidate_framework_proposal")
+      ;;
+    akasha-causality)
       ENGINE_FAMILY="relationship"
       ENGINE_CLASS="graph_engine"
-      ENGINE_ROLE="relation_modeling"
+      ENGINE_ROLE="causal_relation_modeling"
       IDENTITY_LAYER="structure"
+      DESCRIPTION_TEXT="Causality modeling engine for the Akasha constellation. Responsible for representing directional influence, sequence, and causal pathways."
+      DEPENDS_ON=("akasha-ontology" "akasha-events")
+      CONSUMES=("event_records" "graph_structures" "ontology_models")
+      PRODUCES=("causal_graphs" "directional_relation_models" "influence_paths")
+      CAPABILITIES=("causal_graph_generation" "directional_relation_modeling" "sequence_analysis" "influence_path_detection")
       ;;
-    akasha-validation|akasha-guardian)
+    akasha-graph-phases)
+      ENGINE_FAMILY="relationship"
+      ENGINE_CLASS="graph_engine"
+      ENGINE_ROLE="phase_and_relation_modeling"
+      IDENTITY_LAYER="structure"
+      DESCRIPTION_TEXT="Graph phase engine for the Akasha constellation. Responsible for modeling graph states, transitions, and relation structures."
+      DEPENDS_ON=("akasha-ontology")
+      CONSUMES=("ontology_models" "linked_entities" "transition_records")
+      PRODUCES=("graph_phase_models" "transition_maps" "relation_structures")
+      CAPABILITIES=("graph_phase_modeling" "transition_mapping" "relation_structure_generation" "connected_state_analysis")
+      ;;
+    akasha-validation)
       ENGINE_FAMILY="truth"
       ENGINE_CLASS="validation_engine"
-      ENGINE_ROLE="constraint_and_integrity_checking"
+      ENGINE_ROLE="structured_output_validation"
       IDENTITY_LAYER="governance"
+      DESCRIPTION_TEXT="Validation engine for the Akasha constellation. Responsible for checking outputs, structures, and bundles against declared constraints."
+      DEPENDS_ON=("akasha-events" "akasha-ontology")
+      CONSUMES=("validation_targets" "event_records" "structure_outputs" "candidate_bundles")
+      PRODUCES=("validation_reports" "integrity_checks" "acceptance_or_rejection_signals")
+      CAPABILITIES=("output_validation" "integrity_checking" "constraint_testing" "acceptance_signal_generation")
       ;;
-    akasha-world|akasha-simulation|akasha-evolve|akasha-experiments)
+    akasha-guardian)
+      ENGINE_FAMILY="truth"
+      ENGINE_CLASS="validation_engine"
+      ENGINE_ROLE="integrity_and_boundary_guarding"
+      IDENTITY_LAYER="governance"
+      DESCRIPTION_TEXT="Guardian engine for the Akasha constellation. Responsible for protecting structural integrity and watching for invalid states."
+      DEPENDS_ON=("akasha-events" "akasha-attractor" "akasha-validation")
+      CONSUMES=("event_records" "pattern_outputs" "validation_targets" "constraint_inputs")
+      PRODUCES=("integrity_reports" "boundary_alerts" "guarded_validation_outputs")
+      CAPABILITIES=("integrity_guarding" "boundary_checking" "invalid_state_detection" "validation_alerting")
+      ;;
+    akasha-world)
       ENGINE_FAMILY="simulation"
       ENGINE_CLASS="simulation_engine"
-      ENGINE_ROLE="scenario_and_world_modeling"
+      ENGINE_ROLE="world_state_modeling"
       IDENTITY_LAYER="simulation"
+      DESCRIPTION_TEXT="World modeling engine for the Akasha constellation. Responsible for representing broader environmental and contextual world states."
+      DEPENDS_ON=("akasha-time-nexus" "akasha-events")
+      CONSUMES=("event_records" "contextual_inputs" "environmental_models")
+      PRODUCES=("world_state_models" "situational_contexts" "environmental_frames")
+      CAPABILITIES=("world_state_modeling" "situational_frame_generation" "environmental_context_structuring" "context_simulation_support")
       ;;
-    akasha-forge|akasha-engine|akasha-discovery|akasha-discovery-core)
+    akasha-simulation)
+      ENGINE_FAMILY="simulation"
+      ENGINE_CLASS="simulation_engine"
+      ENGINE_ROLE="scenario_and_state_simulation"
+      IDENTITY_LAYER="simulation"
+      DESCRIPTION_TEXT="Simulation engine for the Akasha constellation. Responsible for exploring possible scenarios and state transitions under defined assumptions."
+      DEPENDS_ON=("akasha-ontology" "akasha-world")
+      CONSUMES=("event_records" "ontology_models" "world_state_models" "simulation_inputs")
+      PRODUCES=("scenario_outputs" "simulated_state_transitions" "candidate_behavior_models")
+      CAPABILITIES=("scenario_simulation" "state_transition_modeling" "assumption_driven_exploration" "candidate_behavior_generation")
+      ;;
+    akasha-evolve)
+      ENGINE_FAMILY="simulation"
+      ENGINE_CLASS="simulation_engine"
+      ENGINE_ROLE="iterative_state_evolution"
+      IDENTITY_LAYER="simulation"
+      DESCRIPTION_TEXT="Evolution engine for the Akasha constellation. Responsible for modeling how structures or states may change over repeated steps and feedback cycles."
+      DEPENDS_ON=("akasha-simulation" "akasha-world")
+      CONSUMES=("world_state_models" "scenario_outputs" "transition_rules" "iterative_inputs")
+      PRODUCES=("evolved_state_models" "iterative_change_sequences" "transformation_paths")
+      CAPABILITIES=("iterative_evolution_modeling" "change_sequence_generation" "feedback_cycle_structuring" "transformation_path_analysis")
+      ;;
+    akasha-experiments)
+      ENGINE_FAMILY="simulation"
+      ENGINE_CLASS="simulation_engine"
+      ENGINE_ROLE="experimental_model_exploration"
+      IDENTITY_LAYER="experimentation"
+      DESCRIPTION_TEXT="Experimental exploration engine for the Akasha constellation. Responsible for trying speculative structures without forcing them into the canonical core."
+      DEPENDS_ON=("akasha-simulation" "akasha-world")
+      CONSUMES=("candidate_models" "speculative_inputs" "provisional_rules")
+      PRODUCES=("experiment_outputs" "speculative_results" "provisional_findings")
+      CAPABILITIES=("experimental_modeling" "speculative_exploration" "provisional_structure_testing" "sandboxed_result_generation")
+      ;;
+    akasha-discovery)
       ENGINE_FAMILY="discovery"
       ENGINE_CLASS="discovery_engine"
       ENGINE_ROLE="candidate_structure_generation"
       IDENTITY_LAYER="discovery"
+      DESCRIPTION_TEXT="Discovery engine for the Akasha constellation. Responsible for proposing new structures, candidate links, and missing pieces."
+      DEPENDS_ON=("akasha-ontology" "akasha-graph-phases")
+      CONSUMES=("ontology_models" "graph_phase_models" "source_payloads" "event_ledgers")
+      PRODUCES=("discovery_candidates" "structure_proposals" "gap_hypotheses" "exploratory_outputs")
+      CAPABILITIES=("candidate_generation" "exploratory_structure_detection" "gap_hypothesis_creation" "cross_domain_discovery")
       ;;
-    akasha-constellation|akasha-suite)
+    akasha-discovery-core)
+      ENGINE_FAMILY="discovery"
+      ENGINE_CLASS="discovery_engine"
+      ENGINE_ROLE="foundational_discovery_logic"
+      IDENTITY_LAYER="discovery"
+      DESCRIPTION_TEXT="Core discovery logic engine for the Akasha constellation. Responsible for foundational mechanisms used by discovery-oriented subsystems."
+      DEPENDS_ON=("akasha-ontology" "akasha-graph-phases")
+      CONSUMES=("ontology_models" "graph_phase_models" "foundational_discovery_inputs")
+      PRODUCES=("discovery_primitives" "reusable_discovery_logic" "core_candidate_generation_outputs")
+      CAPABILITIES=("foundational_discovery_modeling" "reusable_candidate_generation" "discovery_logic_structuring" "cross_engine_discovery_support")
+      ;;
+    akasha-engine)
+      ENGINE_FAMILY="discovery"
+      ENGINE_CLASS="discovery_engine"
+      ENGINE_ROLE="engine_subsystem_coordination"
+      IDENTITY_LAYER="coordination"
+      DESCRIPTION_TEXT="Central engine coordination layer for the Akasha constellation. Responsible for orchestrating discovery-oriented subsystems."
+      DEPENDS_ON=("akasha-discovery" "akasha-graph-phases" "akasha-ontology")
+      CONSUMES=("discovery_candidates" "graph_phase_models" "ontology_models" "event_records")
+      PRODUCES=("coordinated_engine_outputs" "routed_intermediate_artifacts" "engine_level_results")
+      CAPABILITIES=("subsystem_coordination" "discovery_routing" "engine_orchestration" "intermediate_artifact_management")
+      ;;
+    akasha-forge)
+      ENGINE_FAMILY="discovery"
+      ENGINE_CLASS="discovery_engine"
+      ENGINE_ROLE="artifact_and_structure_forging"
+      IDENTITY_LAYER="construction"
+      DESCRIPTION_TEXT="Forge engine for the Akasha constellation. Responsible for shaping candidate structures and discovery outputs into usable artifacts."
+      DEPENDS_ON=("akasha-discovery" "akasha-graph-phases")
+      CONSUMES=("discovery_candidates" "structure_proposals" "graph_models" "construction_inputs")
+      PRODUCES=("forged_artifacts" "constructed_bundles" "shaped_outputs")
+      CAPABILITIES=("artifact_forging" "bundle_construction" "candidate_shaping" "discovery_output_materialization")
+      ;;
+    akasha-constellation)
+      ENGINE_FAMILY="meta"
+      ENGINE_CLASS="coordination_engine"
+      ENGINE_ROLE="constellation_state_coordination"
+      IDENTITY_LAYER="coordination"
+      DESCRIPTION_TEXT="Constellation coordination engine for the Akasha ecosystem. Responsible for relating major engines and tracking their place in the wider architecture."
+      DEPENDS_ON=("akasha-grand-atlas" "akasha-events" "akasha-attractor" "akasha-prospector")
+      CONSUMES=("repo_manifests" "engine_outputs" "topology_information" "coordination_inputs")
+      PRODUCES=("constellation_maps" "coordination_views" "engine_relationship_models" "ecosystem_state_outputs")
+      CAPABILITIES=("constellation_mapping" "ecosystem_coordination" "engine_relationship_tracking" "topology_view_generation")
+      ;;
+    akasha-suite)
       ENGINE_FAMILY="meta"
       ENGINE_CLASS="coordination_engine"
       ENGINE_ROLE="constellation_governance"
       IDENTITY_LAYER="coordination"
+      DESCRIPTION_TEXT="Coordination and tooling layer for the Akasha constellation. Responsible for canonical utilities, synchronization helpers, and repo health tools."
+      DEPENDS_ON=("akasha-grand-atlas" "akasha-events" "akasha-attractor" "akasha-prospector")
+      CONSUMES=("repo_states" "manifest_files" "documentation_states" "sync_targets")
+      PRODUCES=("repo_health_reports" "canon_outputs" "sync_reports" "governance_artifacts")
+      CAPABILITIES=("constellation_governance" "repo_health_checking" "synchronization_support" "canon_enforcement")
       ;;
     akasha-domain-*)
       ENGINE_FAMILY="domain"
       ENGINE_CLASS="domain_sidecar"
       ENGINE_ROLE="domain_specific_knowledge"
       IDENTITY_LAYER="domain"
+      local domain_name="${repo#akasha-domain-}"
+      DESCRIPTION_TEXT="${domain_name^} domain sidecar for the Akasha constellation. Responsible for carrying domain-specific structures and knowledge that enrich the wider system."
+      DEPENDS_ON=("akasha-ontology")
+      CONSUMES=("${domain_name}_inputs" "ontology_models" "domain_specific_records")
+      PRODUCES=("${domain_name}_domain_models" "domain_enrichment_outputs")
+      CAPABILITIES=("domain_specific_modeling" "domain_enrichment" "sidecar_knowledge_support")
       ;;
     akasha-visualize)
       ENGINE_FAMILY="presentation"
       ENGINE_CLASS="visualization_engine"
       ENGINE_ROLE="structure_and_output_rendering"
       IDENTITY_LAYER="presentation"
+      DESCRIPTION_TEXT="Visualization layer for the Akasha constellation. Responsible for rendering structures, outputs, relationships, and interpreted views."
+      DEPENDS_ON=("akasha-constellation" "akasha-world")
+      CONSUMES=("akasha-constellation_outputs" "akasha-world_outputs" "akasha-events" "akasha-attractor" "akasha-prospector")
+      PRODUCES=("rendered_views" "diagrams" "visual_reports" "structured_presentations")
+      CAPABILITIES=("structure_rendering" "graph_visualization" "output_presentation" "report_visualization")
       ;;
-    mythology-*)
-      ENGINE_FAMILY="narrative"
-      ENGINE_CLASS="narrative_engine"
-      ENGINE_ROLE="story_and_media_pipeline"
-      IDENTITY_LAYER="narrative"
-      ;;
-    engine-*)
-      ENGINE_FAMILY="discovery"
-      ENGINE_CLASS="specialized_engine"
-      ENGINE_ROLE="engine_subsystem"
-      IDENTITY_LAYER="discovery"
-      ;;
-    node-*)
-      ENGINE_FAMILY="node"
-      ENGINE_CLASS="node_engine"
-      ENGINE_ROLE="field_or_execution_node"
-      IDENTITY_LAYER="node"
+    *)
+      ENGINE_FAMILY="unknown"
+      ENGINE_CLASS="unknown"
+      ENGINE_ROLE="unknown"
+      IDENTITY_LAYER="unknown"
+      DESCRIPTION_TEXT="Canonical Akasha repo placeholder. Replace with repo-specific description."
+      DEPENDS_ON=()
+      CONSUMES=()
+      PRODUCES=()
+      CAPABILITIES=()
       ;;
   esac
 }
 
-infer_dependencies() {
-  local repo="$1"
-  DEPENDS_ON=()
+yaml_list_block() {
+  local indent="$1"
+  shift
+  local arr=("$@")
 
-  case "$repo" in
-    akasha-anomaly|akasha-observer|akasha-collect|akasha-harvest)
-      DEPENDS_ON=("akasha-events" "akasha-time-nexus")
-      ;;
-    akasha-time-nexus)
-      DEPENDS_ON=("akasha-apis")
-      ;;
-    akasha-events)
-      DEPENDS_ON=("akasha-time-nexus")
-      ;;
-    akasha-attractor|akasha-gap|akasha-instability)
-      DEPENDS_ON=("akasha-events")
-      ;;
-    akasha-prospector|akasha-suggest)
-      DEPENDS_ON=("akasha-attractor")
-      ;;
-    akasha-grand-atlas)
-      DEPENDS_ON=()
-      ;;
-    akasha-apis|akasha-bridge)
-      DEPENDS_ON=("akasha-grand-atlas")
-      ;;
-    akasha-ontology|akasha-theory|akasha-theorize|akasha-lens|akasha-axioms)
-      DEPENDS_ON=()
-      ;;
-    akasha-graph-phases|akasha-causality)
-      DEPENDS_ON=("akasha-ontology")
-      ;;
-    akasha-validation|akasha-guardian)
-      DEPENDS_ON=("akasha-events" "akasha-attractor")
-      ;;
-    akasha-world|akasha-simulation|akasha-evolve|akasha-experiments)
-      DEPENDS_ON=("akasha-ontology")
-      ;;
-    akasha-forge|akasha-engine|akasha-discovery|akasha-discovery-core)
-      DEPENDS_ON=("akasha-ontology" "akasha-graph-phases")
-      ;;
-    akasha-constellation|akasha-suite)
-      DEPENDS_ON=("akasha-grand-atlas" "akasha-events" "akasha-attractor" "akasha-prospector")
-      ;;
-    akasha-domain-*)
-      DEPENDS_ON=("akasha-ontology")
-      ;;
-    akasha-visualize)
-      DEPENDS_ON=("akasha-events" "akasha-attractor" "akasha-prospector")
-      ;;
-    mythology-*)
-      DEPENDS_ON=()
-      ;;
-    engine-*)
-      DEPENDS_ON=()
-      ;;
-    node-*)
-      DEPENDS_ON=("akasha-suite")
-      ;;
-  esac
+  if [[ "${#arr[@]}" -eq 0 ]]; then
+    echo "${indent}[]"
+    return
+  fi
+
+  echo
+  for item in "${arr[@]}"; do
+    echo "${indent}- ${item}"
+  done
+}
+
+render_manifest() {
+  local repo="$1"
+
+  cat <<EOT
+repo:
+  name: ${repo}
+  ecosystem: akasha
+  version: 0.1.0
+  status: active
+
+engine:
+  family: ${ENGINE_FAMILY}
+  class: ${ENGINE_CLASS}
+  role: ${ENGINE_ROLE}
+
+identity:
+  role: engine
+  layer: ${IDENTITY_LAYER}
+  description: >
+    ${DESCRIPTION_TEXT}
+
+ownership:
+  steward: human
+  approval_required: true
+
+interfaces:
+  consumes:$(yaml_list_block "    " "${CONSUMES[@]}")
+  produces:$(yaml_list_block "    " "${PRODUCES[@]}")
+
+capabilities:$(yaml_list_block "  " "${CAPABILITIES[@]}")
+
+alignment:
+  axioms_required: true
+  canonical_structure: true
+  interpretation_free_core: true
+
+EOT
+
+  if [[ "${#DEPENDS_ON[@]}" -eq 0 ]]; then
+    echo "depends_on: []"
+  else
+    echo "depends_on:"
+    for dep in "${DEPENDS_ON[@]}"; do
+      echo "  - ${dep}"
+    done
+  fi
+}
+
+render_readme() {
+  local repo="$1"
+
+  cat <<EOT
+# ${repo}
+
+## Engine Role
+
+${repo} is an Akasha engine in the **${ENGINE_FAMILY} / ${ENGINE_CLASS}** family and serves the role of **${ENGINE_ROLE}**.
+
+## Why it exists
+
+This repo exists so the Akasha constellation can perform its role in a disciplined and reusable way without forcing that responsibility into other repos.
+
+## Inputs
+
+Main inputs include:
+
+EOT
+
+  if [[ "${#CONSUMES[@]}" -eq 0 ]]; then
+    echo "- none yet defined"
+  else
+    for item in "${CONSUMES[@]}"; do
+      echo "- ${item}"
+    done
+  fi
+
+  cat <<'EOT'
+
+## Memory / Registry
+
+This repo may maintain local structures, bundles, intermediate results, or domain records relevant to its engine role.
+
+## Relation Model
+
+This repo participates in the wider Akasha constellation by consuming structured inputs and producing outputs that can be linked into other engines and domains.
+
+## Evaluator
+
+This repo should evaluate its own outputs according to canonical structure, internal consistency, and fitness for downstream use.
+
+## Outputs
+
+Main outputs include:
+
+EOT
+
+  if [[ "${#PRODUCES[@]}" -eq 0 ]]; then
+    echo "- none yet defined"
+  else
+    for item in "${PRODUCES[@]}"; do
+      echo "- ${item}"
+    done
+  fi
+
+  cat <<'EOT'
+
+## Position in Constellation
+
+This repo occupies a defined role in Akasha and should remain canonically aligned with the wider ecosystem.
+
+## Next Steps
+
+Immediate next steps:
+
+- refine repo-specific implementation details
+- strengthen internal documentation
+- improve downstream and upstream integration
+- keep this repo aligned with canon law
+EOT
 }
 
 set_yaml_scalar_if_unknown() {
@@ -492,71 +875,6 @@ for i, line in enumerate(lines):
 PY
 }
 
-doctor_manifest() {
-  local repo="$1"
-  local file="$2"
-  local issues=0
-
-  for legacy in "${LEGACY_TOP_KEYS[@]}"; do
-    if grep -Eq "^${legacy}" "$file"; then
-      echo "    Legacy top-level key present: ${legacy}"
-      issues=1
-    fi
-  done
-
-  if grep -Eq '^[[:space:]]*family:[[:space:]]*unknown[[:space:]]*$' "$file"; then
-    echo "    Unknown engine family"
-    issues=1
-  fi
-
-  if grep -Eq '^[[:space:]]*class:[[:space:]]*unknown[[:space:]]*$' "$file"; then
-    echo "    Unknown engine class"
-    issues=1
-  fi
-
-  if grep -Eq '^[[:space:]]*role:[[:space:]]*unknown[[:space:]]*$' "$file"; then
-    echo "    Unknown engine role"
-    issues=1
-  fi
-
-  if grep -Eq '^[[:space:]]*layer:[[:space:]]*unknown[[:space:]]*$' "$file"; then
-    echo "    Unknown identity layer"
-    issues=1
-  fi
-
-  if grep -Fq "Canonical Akasha repo placeholder. Replace with repo-specific description." "$file"; then
-    echo "    Placeholder description present"
-    issues=1
-  fi
-
-  local dep_block
-  dep_block="$(awk '
-    /^depends_on:/ {flag=1; next}
-    flag && /^[^[:space:]-]/ {flag=0}
-    flag {print}
-  ' "$file" || true)"
-
-  if echo "$dep_block" | grep -Fq "$repo"; then
-    echo "    Self dependency detected"
-    issues=1
-  fi
-
-  if [[ "$repo" == "akasha-time-nexus" ]]; then
-    if echo "$dep_block" | grep -Fq "akasha-events"; then
-      echo "    Suspicious dependency: akasha-time-nexus should not depend on akasha-events"
-      issues=1
-    fi
-  fi
-
-  if [[ "$repo" == "akasha-events" ]]; then
-    if echo "$dep_block" | grep -Fq "akasha-time-nexus"; then
-      :
-    fi
-  fi
-
-  return $issues
-}
-
 for d in ~/akasha-* ~/engine-* ~/mythology-* ~/node-*; do
   [ -d "$d/.git" ] || continue
 
@@ -591,25 +909,29 @@ for d in ~/akasha-* ~/engine-* ~/mythology-* ~/node-*; do
 
   if [[ "$MODE" == "fix" ]]; then
     if [ ! -f "$readme" ]; then
-      canon_readme "$repo" > "$readme"
+      classify_repo "$repo"
+      render_readme "$repo" > "$readme"
       echo "  -> created README.md"
     fi
     if [ ! -f "$manifest" ]; then
-      canon_manifest "$repo" > "$manifest"
+      classify_repo "$repo"
+      render_manifest "$repo" > "$manifest"
       echo "  -> created repo-manifest.yaml"
     fi
   fi
 
   if [[ "$MODE" == "patch" ]]; then
     if [ ! -f "$readme" ]; then
-      canon_readme "$repo" > "$readme"
+      classify_repo "$repo"
+      render_readme "$repo" > "$readme"
       echo "  -> created README.md"
     else
       patch_readme "$readme"
     fi
 
     if [ ! -f "$manifest" ]; then
-      canon_manifest "$repo" > "$manifest"
+      classify_repo "$repo"
+      render_manifest "$repo" > "$manifest"
       echo "  -> created repo-manifest.yaml"
     else
       patch_manifest "$manifest" "$repo"
@@ -617,8 +939,9 @@ for d in ~/akasha-* ~/engine-* ~/mythology-* ~/node-*; do
   fi
 
   if [[ "$MODE" == "write" ]]; then
-    canon_readme "$repo" > "$readme"
-    canon_manifest "$repo" > "$manifest"
+    classify_repo "$repo"
+    render_readme "$repo" > "$readme"
+    render_manifest "$repo" > "$manifest"
     echo "  -> rewrote README.md"
     echo "  -> rewrote repo-manifest.yaml"
   fi
@@ -635,7 +958,7 @@ for d in ~/akasha-* ~/engine-* ~/mythology-* ~/node-*; do
 
   if [[ "$MODE" == "topology" ]]; then
     if [ -f "$manifest" ]; then
-      infer_dependencies "$repo"
+      classify_repo "$repo"
       set_depends_if_empty "$manifest" "${DEPENDS_ON[@]}"
     fi
   fi
@@ -650,6 +973,18 @@ for d in ~/akasha-* ~/engine-* ~/mythology-* ~/node-*; do
     else
       echo "  Doctor: ATTENTION"
     fi
+  fi
+
+  if [[ "$MODE" == "enforce" || "$MODE" == "enforce-manifest" ]]; then
+    classify_repo "$repo"
+    render_manifest "$repo" > "$manifest"
+    echo "  -> enforced repo-manifest.yaml"
+  fi
+
+  if [[ "$MODE" == "enforce" || "$MODE" == "enforce-readme" ]]; then
+    classify_repo "$repo"
+    render_readme "$repo" > "$readme"
+    echo "  -> enforced README.md"
   fi
 
   if [[ $readme_ok -eq 1 && $manifest_ok -eq 1 ]]; then
