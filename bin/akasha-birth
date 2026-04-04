@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+REQUESTS_REPO = HOME / "akasha-requests"
+PIPELINE = REQUESTS_REPO / "scripts" / "pipeline.py"
+
+
+def run_step(args):
+    result = subprocess.run(
+        args,
+        cwd=REQUESTS_REPO,
+        text=True
+    )
+    return result.returncode
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage:")
+        print("  akasha-birth REQ-001")
+        sys.exit(1)
+
+    req_id = sys.argv[1]
+
+    if not PIPELINE.exists():
+        print(f"Pipeline not found: {PIPELINE}")
+        sys.exit(1)
+
+    print(f"=== Akasha Birth Sequence: {req_id} ===")
+
+    steps = [
+        ["python", str(PIPELINE), "promote", req_id, "exploring"],
+        ["python", str(PIPELINE), "promote", req_id, "approved"],
+        ["python", str(PIPELINE), "forge", req_id],
+    ]
+
+    for step in steps:
+        code = run_step(step)
+        if code != 0:
+            print(f"Birth sequence halted at step: {' '.join(step)}")
+            sys.exit(code)
+
+    print(f"=== Birth sequence complete for {req_id} ===")
+
+
+if __name__ == "__main__":
+    main()
