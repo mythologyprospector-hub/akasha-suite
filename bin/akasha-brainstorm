@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+
+import json
+import sys
+
+
+def infer_context(text: str) -> dict:
+    lower = text.lower()
+
+    def has(*terms: str) -> bool:
+        return any(term in lower for term in terms)
+
+    return {
+        "requests": has("request", "requests", "json", "intake", "capture"),
+        "forge": has("forge", "repo", "repository", "skeleton", "manifest"),
+        "cipher": has("cipher", "crypt", "kryptos", "voynich", "decode"),
+        "archaeology": has("archaeology", "archaeological", "lidar", "terrain", "mound", "folklore", "site"),
+        "hardware": has("esp32", "arduino", "sensor", "ble", "jetson", "node", "microcontroller"),
+        "discovery": has("discovery", "gap", "prospector", "suggest", "pattern", "ontology"),
+    }
+
+
+def brainstorm(idea: str) -> dict:
+    context = infer_context(idea)
+
+    mutations = []
+
+    if context["archaeology"]:
+        mutations.extend([
+            {
+                "lens": "extension",
+                "title": "Akasha Site Probability Engine",
+                "summary": "Score terrain, folklore, and historical signals to rank likely archaeological targets.",
+                "score": 0.93,
+            },
+            {
+                "lens": "lateral",
+                "title": "Akasha Folklore Index",
+                "summary": "A searchable folklore layer for archaeology and location-based pattern discovery.",
+                "score": 0.87,
+            },
+            {
+                "lens": "weird",
+                "title": "Akasha Ritual Corridor Detector",
+                "summary": "Search terrain and site relationships for ceremonial movement pathways rather than settlement clusters.",
+                "score": 0.80,
+            },
+        ])
+
+    if context["requests"]:
+        mutations.extend([
+            {
+                "lens": "extension",
+                "title": "Akasha Request Translator",
+                "summary": "Translate plain-English ideas into valid request JSON files.",
+                "score": 0.94,
+            },
+            {
+                "lens": "scale",
+                "title": "Micro Request Capture",
+                "summary": "A one-command intake path for capturing sparks with minimal friction.",
+                "score": 0.88,
+            },
+            {
+                "lens": "weird",
+                "title": "Akasha Desire Map",
+                "summary": "Track recurring request themes to reveal what the constellation keeps asking for.",
+                "score": 0.78,
+            },
+        ])
+
+    if context["cipher"]:
+        mutations.extend([
+            {
+                "lens": "extension",
+                "title": "Akasha Cipher Foundry",
+                "summary": "Generate known-answer ciphers to train and benchmark Akasha Cipher Lab.",
+                "score": 0.93,
+            },
+            {
+                "lens": "lateral",
+                "title": "Akasha Language Pattern Lab",
+                "summary": "Apply cipher-style analysis to language, symbol systems, and mysterious texts.",
+                "score": 0.86,
+            },
+            {
+                "lens": "weird",
+                "title": "Akasha Mythic Cipher Lens",
+                "summary": "Explore symbolic and mythic framing as structural clues in unusual encrypted texts.",
+                "score": 0.77,
+            },
+        ])
+
+    if context["hardware"]:
+        mutations.extend([
+            {
+                "lens": "extension",
+                "title": "Akasha Sensor Node Runtime",
+                "summary": "A common runtime for ESP32 or similar boards to emit structured observations into Akasha.",
+                "score": 0.92,
+            },
+            {
+                "lens": "scale",
+                "title": "Micro Akasha Node",
+                "summary": "A minimal observation node using one board, one sensor, and one outbound message format.",
+                "score": 0.89,
+            },
+            {
+                "lens": "weird",
+                "title": "Akasha Ambient Mood Node",
+                "summary": "Use sensors and local signals to estimate environmental texture as a soft observation layer.",
+                "score": 0.75,
+            },
+        ])
+
+    if context["discovery"]:
+        mutations.extend([
+            {
+                "lens": "extension",
+                "title": "Akasha Gap-to-Request Bridge",
+                "summary": "Convert discovery and gap signals into structured candidate requests.",
+                "score": 0.93,
+            },
+            {
+                "lens": "hybrid",
+                "title": "Akasha Discovery Intake Bridge",
+                "summary": "Fuse gap-finding output with request capture to accelerate new organ creation.",
+                "score": 0.89,
+            },
+            {
+                "lens": "lateral",
+                "title": "Akasha Pattern Signal Lab",
+                "summary": "A side organ for exploring weak signals and speculative pattern candidates.",
+                "score": 0.82,
+            },
+        ])
+
+    if not mutations:
+        mutations = [
+            {
+                "lens": "extension",
+                "title": "Akasha Idea Extension Layer",
+                "summary": "A direct next-step organ extending the source idea.",
+                "score": 0.90,
+            },
+            {
+                "lens": "lateral",
+                "title": "Akasha Idea In Another Domain",
+                "summary": "A cross-domain variant of the source idea.",
+                "score": 0.82,
+            },
+            {
+                "lens": "weird",
+                "title": "Strange Akasha Idea",
+                "summary": "A surprising but potentially fertile mutation of the source idea.",
+                "score": 0.70,
+            },
+        ]
+
+    mutations.sort(key=lambda x: x["score"], reverse=True)
+
+    surfaced = {
+        "best_next": mutations[0] if len(mutations) > 0 else None,
+        "best_lateral": next((m for m in mutations if m["lens"] == "lateral"), None),
+        "best_weird": next((m for m in mutations if m["lens"] == "weird"), None),
+    }
+
+    return {
+        "source": idea,
+        "context": context,
+        "mutation_count": len(mutations),
+        "mutations": mutations,
+        "surfaced": surfaced,
+    }
+
+
+def main():
+    if len(sys.argv) < 2:
+        print('Usage: akasha-brainstorm "idea text here"')
+        sys.exit(1)
+
+    idea = " ".join(sys.argv[1:]).strip()
+    print(json.dumps(brainstorm(idea), indent=2))
+
+
+if __name__ == "__main__":
+    main()

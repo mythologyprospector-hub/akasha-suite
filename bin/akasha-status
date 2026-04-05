@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+HOME = Path.home()
+REQ = HOME / "akasha-requests" / "requests"
+
+stages = ["open","exploring","approved","forged","archived"]
+
+print("\nAKASHA REQUEST STATUS\n")
+
+for stage in stages:
+    path = REQ / stage
+    count = len(list(path.glob("REQ-*.json"))) if path.exists() else 0
+    print(f"{stage:10} {count}")
+
+print("")
