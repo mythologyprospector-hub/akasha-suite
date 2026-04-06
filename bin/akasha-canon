@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 MODE="${1:-check}"
-
 HOME_DIR="$HOME"
 
 print_header() {
@@ -13,9 +12,7 @@ echo ""
 }
 
 check_manifest_keys() {
-
 manifest="$1"
-
 missing=0
 
 keys=(
@@ -30,7 +27,7 @@ depends_on
 
 for k in "${keys[@]}"; do
     if ! grep -q "^$k:" "$manifest" 2>/dev/null; then
-        echo "    Missing manifest key: $k"
+        echo "    Missing manifest key: $k:"
         missing=1
     fi
 done
@@ -39,7 +36,6 @@ return $missing
 }
 
 check_repo() {
-
 repo="$1"
 name=$(basename "$repo")
 
@@ -60,7 +56,6 @@ if [ -f "$repo/repo-manifest.yaml" ]; then
     if ! check_manifest_keys "$repo/repo-manifest.yaml"; then
         canon_ok=0
     fi
-
 else
     echo "  repo-manifest.yaml: MISSING"
     canon_ok=0
@@ -75,7 +70,6 @@ if [ -f "$repo/.gitignore" ]; then
         echo "  Guard: MISSING"
         canon_ok=0
     fi
-
 else
     echo "  .gitignore: MISSING"
     canon_ok=0
@@ -88,11 +82,9 @@ else
 fi
 
 echo ""
-
 }
 
 run_checks() {
-
 found=0
 
 for d in "$HOME_DIR"/akasha-*; do
@@ -105,13 +97,16 @@ done
 if [ "$found" -eq 0 ]; then
     echo "No Akasha repos found."
 fi
-
 }
 
 print_header
 
-if [ "$MODE" = "check" ]; then
-    run_checks
-else
-    echo "Unknown mode."
-fi
+case "$MODE" in
+    check)
+        run_checks
+        ;;
+    *)
+        echo "Unknown mode: $MODE"
+        exit 1
+        ;;
+esac
