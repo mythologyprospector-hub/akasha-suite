@@ -1,4 +1,3 @@
-cat <<'EOF' > ~/akasha-constellation-gitignore-guard.sh
 #!/usr/bin/env bash
 
 echo "=================================="
@@ -23,7 +22,7 @@ for repo in akasha-*; do
             echo "  Guard already present"
         else
 
-            cat <<'BLOCK' >> "$GI"
+cat <<'BLOCK' >> "$GI"
 
 # ==================================
 # AKASHA_CANON_GUARD
@@ -31,6 +30,22 @@ for repo in akasha-*; do
 # ==================================
 !/README.md
 !/repo-manifest.yaml
+
+# ==================================
+# AKASHA_NOISE_FILTER
+# Generated artifacts
+# ==================================
+ARCHETYPE_COVERAGE_MAP.md
+*.log
+*.tmp
+*.cache
+.DS_Store
+
+# Discovery engine artifacts
+tree.txt
+output.txt
+*_run_output.txt
+
 BLOCK
 
             echo "  Guard installed"
@@ -42,4 +57,3 @@ done
 
 echo ""
 echo "Safety pass complete."
-EOF
