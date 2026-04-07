@@ -49,3 +49,11 @@ depends_on:
   - akasha-events
   - akasha-attractor
   - akasha-prospector
+
+# ---- Canonical sections added by akasha-canon ----
+type: organ
+
+family: discovery
+
+role: suite
+

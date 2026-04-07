@@ -1,112 +1,388 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 MODE="${1:-check}"
+shift || true
+
 HOME_DIR="$HOME"
+TARGETS=("$@")
 
 print_header() {
-echo "=================================="
-echo "         AKASHA CANON"
-echo "=================================="
-echo "Mode: $MODE"
-echo ""
+  echo "=================================="
+  echo "         AKASHA CANON"
+  echo "=================================="
+  echo "Mode: $MODE"
+  echo ""
+}
+
+canon_guard_block() {
+cat <<'BLOCK'
+# ==================================
+# AKASHA_CANON_GUARD
+# Protect canonical files
+# ==================================
+!/README.md
+!/repo-manifest.yaml
+
+# ==================================
+# AKASHA_NOISE_FILTER
+# Generated artifacts
+# ==================================
+ARCHETYPE_COVERAGE_MAP.md
+*.log
+*.tmp
+*.cache
+.DS_Store
+tree.txt
+output.txt
+*_run_output.txt
+BLOCK
+}
+
+default_readme() {
+  local repo_name="$1"
+cat <<TXT
+# ${repo_name#akasha-}
+
+Akasha organ.
+
+## Purpose
+This repository is part of the Akasha constellation.
+
+## Status
+Seed-stage canonical organ.
+TXT
+}
+
+default_manifest() {
+  local repo_name="$1"
+  local title
+  title="$(printf '%s' "${repo_name#akasha-}" | tr '-' ' ' | sed 's/\b\(.\)/\u\1/g')"
+cat <<TXT
+repo: $repo_name
+type: organ
+family: discovery
+role: ${repo_name#akasha-}
+
+engine:
+  name: $repo_name
+  class: organ
+  maturity: seed
+
+identity:
+  repo: $repo_name
+  slug: $repo_name
+  title: $title
+
+ownership:
+  steward: JimmyDev
+  authority: local-first
+
+interfaces:
+  cli: []
+  files:
+    - README.md
+    - repo-manifest.yaml
+
+capabilities:
+  - initialize
+  - describe
+
+alignment:
+  constellation_role: engine
+  canon_status: canonicalized
+
+depends_on:
+  - akasha-requests
+  - akasha-suite
+TXT
+}
+
+ensure_manifest_blocks() {
+  local manifest="$1"
+  local repo_name="$2"
+
+  python - "$manifest" "$repo_name" <<'PY'
+import sys
+from pathlib import Path
+
+manifest = Path(sys.argv[1])
+repo = sys.argv[2]
+text = manifest.read_text(encoding="utf-8") if manifest.exists() else ""
+
+title = repo.replace("akasha-", "").replace("-", " ").title()
+
+required_blocks = {
+    "repo:": f"repo: {repo}\n",
+    "type:": "type: organ\n",
+    "family:": "family: discovery\n",
+    "role:": f"role: {repo.replace('akasha-','')}\n",
+    "engine:": f"""engine:
+  name: {repo}
+  class: organ
+  maturity: seed
+""",
+    "identity:": f"""identity:
+  repo: {repo}
+  slug: {repo}
+  title: {title}
+""",
+    "ownership:": """ownership:
+  steward: JimmyDev
+  authority: local-first
+""",
+    "interfaces:": """interfaces:
+  cli: []
+  files:
+    - README.md
+    - repo-manifest.yaml
+""",
+    "capabilities:": """capabilities:
+  - initialize
+  - describe
+""",
+    "alignment:": """alignment:
+  constellation_role: engine
+  canon_status: canonicalized
+""",
+    "depends_on:": """depends_on:
+  - akasha-requests
+  - akasha-suite
+"""
+}
+
+missing = [k for k in required_blocks if not any(line.startswith(k) for line in text.splitlines())]
+
+if missing:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    text += "\n# ---- Canonical sections added by akasha-canon ----\n"
+    for key in missing:
+        text += required_blocks[key]
+        if not text.endswith("\n"):
+            text += "\n"
+        text += "\n"
+
+manifest.write_text(text.lstrip("\n"), encoding="utf-8")
+    # intentional bare print for shell capture
+    # no JSON nonsense needed here
+print("patched" if missing else "ok")
+PY
 }
 
 check_manifest_keys() {
-manifest="$1"
-missing=0
+  local manifest="$1"
+  local missing=0
+  local keys=(
+    repo
+    type
+    family
+    role
+    engine
+    identity
+    ownership
+    interfaces
+    capabilities
+    alignment
+    depends_on
+  )
 
-keys=(
-engine
-identity
-ownership
-interfaces
-capabilities
-alignment
-depends_on
-)
-
-for k in "${keys[@]}"; do
+  for k in "${keys[@]}"; do
     if ! grep -q "^$k:" "$manifest" 2>/dev/null; then
-        echo "    Missing manifest key: $k:"
-        missing=1
+      echo "    Missing manifest key: $k:"
+      missing=1
     fi
-done
+  done
 
-return $missing
+  return "$missing"
+}
+
+ensure_gitignore_guard() {
+  local gitignore="$1"
+
+  if [ ! -f "$gitignore" ]; then
+    canon_guard_block > "$gitignore"
+    return
+  fi
+
+  if ! grep -q "AKASHA_CANON_GUARD" "$gitignore" 2>/dev/null; then
+    printf '\n' >> "$gitignore"
+    canon_guard_block >> "$gitignore"
+  fi
 }
 
 check_repo() {
-repo="$1"
-name=$(basename "$repo")
+  local repo="$1"
+  local name
+  name="$(basename "$repo")"
 
-echo "Repo: $name"
+  echo "Repo: $name"
 
-canon_ok=1
+  local canon_ok=1
 
-if [ -f "$repo/README.md" ]; then
+  if [ -f "$repo/README.md" ]; then
     echo "  README.md: present"
-else
+  else
     echo "  README.md: MISSING"
     canon_ok=0
-fi
+  fi
 
-if [ -f "$repo/repo-manifest.yaml" ]; then
+  if [ -f "$repo/repo-manifest.yaml" ]; then
     echo "  repo-manifest.yaml: present"
-
     if ! check_manifest_keys "$repo/repo-manifest.yaml"; then
-        canon_ok=0
+      canon_ok=0
     fi
-else
+  else
     echo "  repo-manifest.yaml: MISSING"
     canon_ok=0
-fi
+  fi
 
-if [ -f "$repo/.gitignore" ]; then
+  if [ -f "$repo/.gitignore" ]; then
     echo "  .gitignore: present"
-
     if grep -q "AKASHA_CANON_GUARD" "$repo/.gitignore" 2>/dev/null; then
-        echo "  Guard: OK"
+      echo "  Guard: OK"
     else
-        echo "  Guard: MISSING"
-        canon_ok=0
+      echo "  Guard: MISSING"
+      canon_ok=0
     fi
-else
+  else
     echo "  .gitignore: MISSING"
     canon_ok=0
-fi
+  fi
 
-if [ "$canon_ok" -eq 1 ]; then
+  if [ "$canon_ok" -eq 1 ]; then
     echo "  Canon: OK"
-else
+    echo ""
+    return 0
+  else
     echo "  Canon: CHECK"
-fi
+    echo ""
+    return 1
+  fi
+}
 
-echo ""
+fix_repo() {
+  local repo="$1"
+  local name
+  name="$(basename "$repo")"
+
+  echo "Repo: $name"
+
+  if [ ! -f "$repo/README.md" ]; then
+    default_readme "$name" > "$repo/README.md"
+    echo "  README.md: created"
+  else
+    echo "  README.md: present"
+  fi
+
+  if [ ! -f "$repo/repo-manifest.yaml" ]; then
+    default_manifest "$name" > "$repo/repo-manifest.yaml"
+    echo "  repo-manifest.yaml: created"
+  else
+    local result
+    result="$(ensure_manifest_blocks "$repo/repo-manifest.yaml" "$name")"
+    echo "  repo-manifest.yaml: $result"
+  fi
+
+  ensure_gitignore_guard "$repo/.gitignore"
+  echo "  .gitignore: ensured"
+
+  if check_repo "$repo" >/dev/null 2>&1; then
+    echo "  Fix result: OK"
+  else
+    echo "  Fix result: CHECK"
+  fi
+
+  echo ""
+}
+
+resolve_repos() {
+  if [ "${#TARGETS[@]}" -gt 0 ]; then
+    for t in "${TARGETS[@]}"; do
+      if [ -d "$t" ]; then
+        printf '%s\n' "$t"
+      elif [ -d "$HOME_DIR/$t" ]; then
+        printf '%s\n' "$HOME_DIR/$t"
+      else
+        echo "[WARN] Target not found: $t" >&2
+      fi
+    done
+  else
+    for d in "$HOME_DIR"/akasha-*; do
+      [ -d "$d/.git" ] && printf '%s\n' "$d"
+    done
+  fi
 }
 
 run_checks() {
-found=0
+  local found=0
+  local failed=0
 
-for d in "$HOME_DIR"/akasha-*; do
-    if [ -d "$d/.git" ]; then
-        check_repo "$d"
-        found=1
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    found=1
+    if ! check_repo "$repo"; then
+      failed=1
     fi
-done
+  done < <(resolve_repos)
 
-if [ "$found" -eq 0 ]; then
+  if [ "$found" -eq 0 ]; then
     echo "No Akasha repos found."
-fi
+    return 1
+  fi
+
+  return "$failed"
+}
+
+run_fixes() {
+  local found=0
+
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    found=1
+    fix_repo "$repo"
+  done < <(resolve_repos)
+
+  if [ "$found" -eq 0 ]; then
+    echo "No Akasha repos found."
+    return 1
+  fi
 }
 
 print_header
 
 case "$MODE" in
-    check)
-        run_checks
-        ;;
-    *)
-        echo "Unknown mode: $MODE"
-        exit 1
-        ;;
+  check)
+    run_checks
+    ;;
+  fix)
+    run_fixes
+    ;;
+  check-one)
+    if [ "${#TARGETS[@]}" -eq 0 ]; then
+      echo "Usage: akasha-canon check-one <repo>"
+      exit 1
+    fi
+    check_repo "${TARGETS[0]}"
+    ;;
+  fix-one)
+    if [ "${#TARGETS[@]}" -eq 0 ]; then
+      echo "Usage: akasha-canon fix-one <repo>"
+      exit 1
+    fi
+    if [ -d "${TARGETS[0]}" ]; then
+      fix_repo "${TARGETS[0]}"
+    else
+      fix_repo "$HOME_DIR/${TARGETS[0]}"
+    fi
+    ;;
+  *)
+    echo "Unknown mode: $MODE"
+    echo "Usage:"
+    echo "  akasha-canon check"
+    echo "  akasha-canon fix"
+    echo "  akasha-canon check-one <repo>"
+    echo "  akasha-canon fix-one <repo>"
+    exit 1
+    ;;
 esac
